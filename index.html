@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Beheer Applicatie</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-lg sticky top-0 z-10">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h1 class="text-2xl font-bold tracking-wide">Budget Beheer</h1>
+            </div>
+            <nav class="space-x-2 flex items-center">
+                <button id="nav-afdelingen" class="nav-btn font-medium bg-indigo-800 px-4 py-2 rounded-lg transition hover:bg-indigo-700 shadow-inner">Afdelingen</button>
+                <button id="nav-boekingen" class="nav-btn font-medium px-4 py-2 rounded-lg transition hover:bg-indigo-700">Historie</button>
+                <div class="w-px h-6 bg-indigo-400 mx-2"></div>
+                <button id="btn-nieuwe-boeking" class="bg-emerald-500 hover:bg-emerald-400 text-white px-5 py-2 rounded-lg font-bold shadow-md transition flex items-center space-x-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Nieuwe Boeking</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto mt-8 px-6 flex-grow">
+        <!-- Afdelingen Sectie -->
+        <section id="sectie-afdelingen" class="block animate-fade-in">
+            <div class="flex justify-between items-end mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800">Budgetten per Afdeling</h2>
+                    <p class="text-slate-500 mt-1">Actueel overzicht van alle budgetten.</p>
+                </div>
+            </div>
+
+            <div class="bg-white shadow-md rounded-xl overflow-hidden border border-slate-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 text-sm uppercase tracking-wider">
+                            <th class="p-4 font-semibold">Afdeling</th>
+                            <th class="p-4 font-semibold">Manager</th>
+                            <th class="p-4 font-semibold">Startbudget</th>
+                            <th class="p-4 font-semibold">Resterend Budget</th>
+                            <th class="p-4 font-semibold text-center">Actie</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabel-afdelingen" class="divide-y divide-slate-100 text-slate-700">
+                        <!-- Dynamically populated -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Boekingen Sectie -->
+        <section id="sectie-boekingen" class="hidden animate-fade-in">
+            <div class="flex justify-between items-end mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800">Historie van Boekingen</h2>
+                    <p class="text-slate-500 mt-1">Overzicht van alle afschrijvingen per afdeling.</p>
+                </div>
+            </div>
+
+            <div class="bg-white shadow-md rounded-xl overflow-hidden border border-slate-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 text-sm uppercase tracking-wider">
+                            <th class="p-4 font-semibold">Datum</th>
+                            <th class="p-4 font-semibold">Afdeling</th>
+                            <th class="p-4 font-semibold">Manager</th>
+                            <th class="p-4 font-semibold">Bedrag</th>
+                            <th class="p-4 font-semibold w-1/3">Omschrijving</th>
+                            <th class="p-4 font-semibold">Geboekt Door</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabel-boekingen" class="divide-y divide-slate-100 text-slate-700">
+                        <!-- Dynamically populated -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Formulier -->
+    <div id="modal-boeking" class="fixed inset-0 bg-slate-900 bg-opacity-60 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg transform transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-indigo-700 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Bedrag Afschrijven
+                </h2>
+                <button id="btn-close-modal" class="text-slate-400 hover:text-slate-600 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <form id="form-boeking">
+                <div class="space-y-5">
+                    <div>
+                        <label for="input-afdeling" class="block font-medium text-slate-700 mb-1">Afdeling</label>
+                        <select id="input-afdeling" class="w-full border-slate-300 rounded-lg p-3 bg-slate-50 border focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition" required>
+                            <!-- Options dynamically populated -->
+                        </select>
+                    </div>
+                    <div>
+                        <label for="input-bedrag" class="block font-medium text-slate-700 mb-1">Bedrag (€)</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span class="text-slate-500 sm:text-sm">€</span>
+                            </div>
+                            <input type="number" id="input-bedrag" class="w-full border-slate-300 rounded-lg pl-8 p-3 bg-slate-50 border focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition" min="0.01" step="0.01" placeholder="0.00" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="input-omschrijving" class="block font-medium text-slate-700 mb-1">Omschrijving</label>
+                        <textarea id="input-omschrijving" rows="3" class="w-full border-slate-300 rounded-lg p-3 bg-slate-50 border focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition resize-none" placeholder="Waarom wordt dit afgeschreven?" required></textarea>
+                    </div>
+                </div>
+
+                <div id="form-error" class="text-red-600 text-sm mt-4 hidden bg-red-50 border border-red-200 p-3 rounded-lg flex items-start gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span id="form-error-text"></span>
+                </div>
+
+                <div class="flex justify-end space-x-3 mt-8 pt-4 border-t border-slate-100">
+                    <button type="button" id="btn-annuleer" class="px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg transition font-medium">Annuleren</button>
+                    <!-- Changed button name here to Bevestig Afschrijving to differentiate it for testing and clarity -->
+                    <button type="submit" id="btn-submit-boeking" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition font-medium shadow-md shadow-indigo-200 flex items-center gap-2">
+                        Bevestig Afschrijving
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-auto py-6 text-center text-slate-500 text-sm">
+        <p>&copy; 2024 Budget Beheer. Gemaakt voor de Power Apps simulatie.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
