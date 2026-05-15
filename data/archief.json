@@ -1,0 +1,56 @@
+[
+  {
+    "id": "dd03313e-ec83-4e59-8b3e-a9f160b2f16a",
+    "periodeType": "maand",
+    "periodeStart": "2026-04-30",
+    "periodeEinde": "2026-04-29",
+    "boekingen": [
+      {
+        "id": "689bbbdb-0051-4deb-9fce-af5e2affaba4",
+        "datum": "2026-04-30T13:40:20.734Z",
+        "afdelingId": "marketing",
+        "afdelingNaam": "Marketing",
+        "bedrag": 5200,
+        "omschrijving": "aap",
+        "geboektDoor": "Milan"
+      }
+    ],
+    "budgetSnapshot": [
+      {
+        "id": "ict",
+        "naam": "ICT",
+        "manager": "Jan de Vries",
+        "totaalBudget": 50000,
+        "resterendBudget": 50000
+      },
+      {
+        "id": "hr",
+        "naam": "HR",
+        "manager": "Lisa Smit",
+        "totaalBudget": 30000,
+        "resterendBudget": 30000
+      },
+      {
+        "id": "marketing",
+        "naam": "Marketing",
+        "manager": "Tom Bakker",
+        "totaalBudget": 40000,
+        "resterendBudget": 34800
+      },
+      {
+        "id": "financien",
+        "naam": "Financiën",
+        "manager": "Sara Jansen",
+        "totaalBudget": 25000,
+        "resterendBudget": 25000
+      },
+      {
+        "id": "operations",
+        "naam": "Operations",
+        "manager": "Piet Willems",
+        "totaalBudget": 60000,
+        "resterendBudget": 60000
+      }
+    ]
+  }
+]

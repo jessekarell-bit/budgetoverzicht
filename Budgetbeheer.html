@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Budgetbeheer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    .modal-bg { background: rgba(0,0,0,0.45); }
+    .fade { animation: fadeIn .15s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; } }
+    .editable:hover .edit-icon { opacity:1; }
+    .edit-icon { opacity:0; transition:.15s; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<div id="app"></div>
+<script>
+// ═══════════════════════════════════════════════════════════
+//  STORAGE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  get: k => JSON.parse(localStorage.getItem('bb_'+k)||'null'),
+  set: (k,v) => localStorage.setItem('bb_'+k, JSON.stringify(v)),
+};
+
+function initData() {
+  if (!S.get('budgetten')) S.set('budgetten', [
+    { id:'ict',        naam:'ICT',        manager:'Jan de Vries', totaalBudget:50000, resterendBudget:50000, categorieen:[] },
+    { id:'hr',         naam:'HR',         manager:'Lisa Smit',    totaalBudget:30000, resterendBudget:30000, categorieen:[] },
+    { id:'marketing',  naam:'Marketing',  manager:'Tom Bakker',   totaalBudget:40000, resterendBudget:40000, categorieen:[] },
+    { id:'financien',  naam:'Financiën',  manager:'Sara Jansen',  totaalBudget:25000, resterendBudget:25000, categorieen:[] },
+    { id:'operations', naam:'Operations', manager:'Piet Willems', totaalBudget:60000, resterendBudget:60000, categorieen:[] },
+  ]);
+  // Zorg dat elke afdeling een categorieen array heeft
+  const b = S.get('budgetten').map(a => ({categorieen:[], ...a}));
+  S.set('budgetten', b);
+  if (!S.get('boekingen'))    S.set('boekingen', []);
+  if (!S.get('archief'))      S.set('archief', []);
+  if (!S.get('instellingen')) S.set('instellingen', { periodeType:'maand', huidigePeriodeStart: vandaag() });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function vandaag() { return new Date().toISOString().split('T')[0]; }
+function uuid() { return crypto.randomUUID(); }
+function euro(n) { return '€'+Number(n).toLocaleString('nl-NL'); }
+function datumNL(s) { return s ? new Date(s).toLocaleDateString('nl-NL') : '—'; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function periodeLabel(type, start) {
+  const d = new Date(start);
+  if (type==='dag')      return d.toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  if (type==='week')     { const e=new Date(d); e.setDate(d.getDate()+6); return d.toLocaleDateString('nl-NL',{day:'numeric',month:'short'})+' – '+e.toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'}); }
+  if (type==='maand')    return d.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+  if (type==='kwartaal') return 'Q'+(Math.floor(d.getMonth()/3)+1)+' '+d.getFullYear();
+  if (type==='jaar')     return String(d.getFullYear());
+  return start;
+}
+
+function budgetBalk(totaal, resterend, klein) {
+  const pct = totaal>0 ? Math.max(0,resterend/totaal*100) : 0;
+  const kleur = pct>50 ? 'bg-green-500' : pct>20 ? 'bg-yellow-400' : 'bg-red-500';
+  const h = klein ? 'h-1.5' : 'h-2';
+  return `<div class="w-full bg-gray-200 rounded-full ${h}"><div class="${kleur} ${h} rounded-full transition-all" style="width:${pct}%"></div></div>`;
+}
+
+function badge(tekst) {
+  const map = {vakkennis:'bg-blue-100 text-blue-700',gedragscompetenties:'bg-purple-100 text-purple-700',coaching:'bg-teal-100 text-teal-700',
+    noodzakelijk:'bg-red-100 text-red-700',essentieel:'bg-orange-100 text-orange-700',preventief:'bg-yellow-100 text-yellow-700','algemene ontwikkeling':'bg-green-100 text-green-700',
+    individu:'bg-gray-100 text-gray-600',team:'bg-indigo-100 text-indigo-700'};
+  if (!tekst) return '';
+  const k = map[tekst.toLowerCase()]||'bg-gray-100 text-gray-500';
+  return `<span class="inline-block text-xs px-2 py-0.5 rounded-full font-medium ${k}">${esc(tekst)}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ROUTING
+// ═══════════════════════════════════════════════════════════
+let pagina = 'overzicht';
+let huidigeAfdelingId = null;
+
+function nav(p, id) { pagina=p; huidigeAfdelingId=id||null; render(); }
+
+// ═══════════════════════════════════════════════════════════
+//  MODAL STATE
+// ═══════════════════════════════════════════════════════════
+let modal = null;
+let modalData = {};
+
+function openModal(naam, data) { modal=naam; modalData=data||{}; render(); }
+function sluitModal() { modal=null; modalData={}; render(); }
+function sluitModalBg(e) { if(e.target===e.currentTarget) sluitModal(); }
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER HOOFD
+// ═══════════════════════════════════════════════════════════
+function render() {
+  const inst = S.get('instellingen');
+  const terug = pagina!=='overzicht' ? `<button onclick="nav('overzicht')" class="text-gray-400 hover:text-gray-600 text-sm mr-3">← Overzicht</button>` : '';
+
+  const header = `
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <div class="flex items-center">
+        ${terug}
+        <div>
+          <h1 class="text-lg font-bold text-gray-900 cursor-pointer" onclick="nav('overzicht')">Budgetbeheer</h1>
+          <p class="text-xs text-gray-400">${esc(periodeLabel(inst.periodeType, inst.huidigePeriodeStart))}</p>
+        </div>
+      </div>
+      <div class="flex gap-2 flex-wrap justify-end">
+        ${pagina==='overzicht' ? `<button onclick="nav('archief')" class="border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-1.5 rounded-lg">Archief</button>` : ''}
+        <button onclick="openModal('periode-inst')" class="border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-1.5 rounded-lg">⚙ Periode</button>
+        <button onclick="openModal('nieuwe-periode')" class="border border-orange-300 text-orange-600 hover:bg-orange-50 text-sm font-medium px-3 py-1.5 rounded-lg">Nieuwe periode</button>
+        <button onclick="exportExcel()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg">⬇ Excel</button>
+        <button onclick="openModal('import')" class="border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-1.5 rounded-lg">📂 Import</button>
+        <button onclick="openModal('boeking',{afdelingId:huidigeAfdelingId})" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg">+ Afschrijven</button>
+      </div>
+    </header>`;
+
+  let content = '';
+  if (pagina==='overzicht') content = renderOverzicht();
+  if (pagina==='afdeling')  content = renderAfdeling();
+  if (pagina==='archief')   content = renderArchief();
+
+  document.getElementById('app').innerHTML = header +
+    `<main class="max-w-4xl mx-auto px-4 py-6 fade">${content}</main>` +
+    renderModal();
+
+  document.onkeydown = e => { if(e.key==='Escape'&&modal) sluitModal(); };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OVERZICHT
+// ═══════════════════════════════════════════════════════════
+function renderOverzicht() {
+  const budgetten = S.get('budgetten');
+  const kaarten = budgetten.map(a => {
+    const gebruikt = a.totaalBudget - a.resterendBudget;
+    const pct = a.totaalBudget>0 ? Math.round(gebruikt/a.totaalBudget*100) : 0;
+    return `
+      <div class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-start justify-between mb-1">
+          <div class="flex-1 cursor-pointer" onclick="nav('afdeling','${esc(a.id)}')">
+            <p class="font-semibold text-gray-900">${esc(a.naam)}</p>
+            <p class="text-sm text-gray-500">${esc(a.manager)}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">${pct}% gebruikt</span>
+            <button onclick="openModal('afdeling-bewerken',{id:'${esc(a.id)}'})"
+              title="Afdeling bewerken"
+              class="text-gray-300 hover:text-gray-500 transition-colors p-1 rounded">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="cursor-pointer" onclick="nav('afdeling','${esc(a.id)}')">
+          <div class="mt-3">${budgetBalk(a.totaalBudget, a.resterendBudget)}</div>
+          <div class="flex justify-between mt-3 text-sm">
+            <span class="text-gray-500">Resterend</span>
+            <span class="font-medium text-gray-900">${euro(a.resterendBudget)} / ${euro(a.totaalBudget)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="grid gap-4 sm:grid-cols-2">
+      ${kaarten}
+      <button onclick="openModal('nieuwe-afdeling')"
+        class="bg-white rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 p-5 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer min-h-[140px]">
+        <span class="text-3xl text-gray-300">+</span>
+        <span class="text-sm font-medium text-gray-400">Nieuwe afdeling</span>
+      </button>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AFDELING DETAIL
+// ═══════════════════════════════════════════════════════════
+function renderAfdeling() {
+  const afdeling = S.get('budgetten').find(a => a.id===huidigeAfdelingId);
+  if (!afdeling) return '<p class="text-gray-400">Niet gevonden.</p>';
+  const boekingen = S.get('boekingen').filter(b => b.afdelingId===afdeling.id);
+  const gebruikt = afdeling.totaalBudget - afdeling.resterendBudget;
+  const cats = afdeling.categorieen || [];
+
+  // Bereken gebruik per categorie vanuit boekingen
+  const catGebruik = {};
+  boekingen.forEach(b => { if(b.categorieId) catGebruik[b.categorieId] = (catGebruik[b.categorieId]||0)+b.bedrag; });
+
+  const catHtml = cats.length === 0
+    ? `<p class="text-sm text-gray-400 py-3 text-center">Nog geen categorieën. Voeg er een toe om het budget verder onder te verdelen.</p>`
+    : cats.map(c => {
+        const geb = catGebruik[c.id]||0;
+        const rest = c.toegewezenBudget - geb;
+        const pct = c.toegewezenBudget>0 ? Math.round(geb/c.toegewezenBudget*100) : 0;
+        return `
+          <div class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-sm font-medium text-gray-800 truncate">${esc(c.naam)}</span>
+                <span class="text-xs text-gray-400 ml-2 shrink-0">${pct}%</span>
+              </div>
+              ${budgetBalk(c.toegewezenBudget, Math.max(0,rest), true)}
+              <div class="flex justify-between text-xs text-gray-400 mt-1">
+                <span>Resterend ${euro(Math.max(0,rest))}</span>
+                <span>van ${euro(c.toegewezenBudget)}</span>
+              </div>
+            </div>
+            <div class="flex gap-1 shrink-0">
+              <button onclick="openModal('categorie',{afdelingId:'${esc(afdeling.id)}',catId:'${esc(c.id)}'})"
+                class="text-gray-300 hover:text-gray-500 p-1 rounded" title="Bewerken">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              </button>
+              <button onclick="verwijderCategorie('${esc(afdeling.id)}','${esc(c.id)}')"
+                class="text-gray-300 hover:text-red-400 p-1 rounded" title="Verwijderen">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+
+  // Totaal toegewezen check
+  const totaalToegewezen = cats.reduce((s,c)=>s+c.toegewezenBudget,0);
+  const overToegewezen = totaalToegewezen > afdeling.totaalBudget;
+  const waarschuwing = overToegewezen
+    ? `<p class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-2 py-1">⚠ Totaal toegewezen (${euro(totaalToegewezen)}) overschrijdt het afdelingsbudget (${euro(afdeling.totaalBudget)}).</p>`
+    : '';
+
+  const boekingRijen = boekingen.length===0
+    ? `<tr><td colspan="7" class="px-6 py-8 text-center text-gray-400 text-sm">Nog geen boekingen.</td></tr>`
+    : boekingen.map(b=>`
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 text-gray-900 whitespace-nowrap text-sm">${datumNL(b.uitgavenDatum||b.datum)}</td>
+        <td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">${datumNL(b.boekingsDatum||b.datum)}</td>
+        <td class="px-4 py-3 text-gray-900 text-sm">${esc(b.omschrijving)}</td>
+        <td class="px-4 py-3 text-sm">${b.categorieNaam?`<span class="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-medium">${esc(b.categorieNaam)}</span>`:''}</td>
+        <td class="px-4 py-3 text-gray-500 text-sm">${esc(b.geboektDoor)}</td>
+        <td class="px-4 py-3 text-sm">${b.bron==='import'?badge(b.categorie||''):''}</td>
+        <td class="px-4 py-3 text-right font-medium text-red-600 whitespace-nowrap text-sm">−${euro(b.bedrag)}</td>
+      </tr>`).join('');
+
+  return `
+    <div class="space-y-5">
+      <!-- Budget kaart -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-1">
+          <div>
+            <h2 class="text-xl font-bold text-gray-900">${esc(afdeling.naam)}</h2>
+            <p class="text-sm text-gray-500">${esc(afdeling.manager)}</p>
+          </div>
+          <button onclick="openModal('afdeling-bewerken',{id:'${esc(afdeling.id)}'})"
+            class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-1.5 rounded-lg transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            Bewerken
+          </button>
+        </div>
+        <div class="mt-4 space-y-3">
+          <div class="flex justify-between text-sm text-gray-500"><span>Totaalbudget</span><span class="font-medium text-gray-900">${euro(afdeling.totaalBudget)}</span></div>
+          ${budgetBalk(afdeling.totaalBudget, afdeling.resterendBudget)}
+          <div class="grid grid-cols-2 gap-4 text-sm pt-1">
+            <div class="bg-green-50 rounded-lg p-3"><p class="text-green-700 font-semibold">${euro(afdeling.resterendBudget)}</p><p class="text-green-600 text-xs mt-0.5">Resterend</p></div>
+            <div class="bg-red-50 rounded-lg p-3"><p class="text-red-700 font-semibold">${euro(gebruikt)}</p><p class="text-red-600 text-xs mt-0.5">Gebruikt</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Categorieën -->
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 class="font-semibold text-gray-800">Budgetcategorieën</h3>
+          <button onclick="openModal('categorie',{afdelingId:'${esc(afdeling.id)}'})"
+            class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium">
+            <span class="text-lg leading-none">+</span> Categorie toevoegen
+          </button>
+        </div>
+        <div class="px-5 py-2">
+          ${waarschuwing}
+          ${catHtml}
+        </div>
+      </div>
+
+      <!-- Boekingen -->
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100">
+          <h3 class="font-semibold text-gray-800">Boekingen (${boekingen.length})</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-left">Uitgavendatum</th>
+                <th class="px-4 py-3 text-left">Boekingsdatum</th>
+                <th class="px-4 py-3 text-left">Omschrijving</th>
+                <th class="px-4 py-3 text-left">Categorie</th>
+                <th class="px-4 py-3 text-left">Door</th>
+                <th class="px-4 py-3 text-left">Labels</th>
+                <th class="px-4 py-3 text-right">Bedrag</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">${boekingRijen}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ARCHIEF
+// ═══════════════════════════════════════════════════════════
+function renderArchief() {
+  const archief = S.get('archief');
+  if (!archief.length) return `<p class="text-center text-gray-400 text-sm py-16">Nog geen gearchiveerde periodes.</p>`;
+  return `<div class="space-y-4">` + archief.map((p,pi) => {
+    const totaal = p.boekingen.reduce((s,b)=>s+b.bedrag,0);
+    const rijen = p.boekingen.map(b=>`
+      <tr>
+        <td class="px-4 py-2 text-sm">${datumNL(b.uitgavenDatum||b.datum)}</td>
+        <td class="px-4 py-2 text-xs text-gray-400">${datumNL(b.boekingsDatum||b.datum)}</td>
+        <td class="px-4 py-2 text-sm">${esc(b.afdelingNaam)}</td>
+        <td class="px-4 py-2 text-sm text-gray-600">${esc(b.omschrijving)}</td>
+        <td class="px-4 py-2 text-sm">${b.categorieNaam?`<span class="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-full">${esc(b.categorieNaam)}</span>`:''}</td>
+        <td class="px-4 py-2 text-sm text-gray-500">${esc(b.geboektDoor)}</td>
+        <td class="px-4 py-2 text-right font-medium text-red-600 text-sm">−${euro(b.bedrag)}</td>
+      </tr>`).join('');
+    const snaps = p.budgetSnapshot.map(a=>{
+      const g=a.totaalBudget-a.resterendBudget;
+      return `<div class="bg-white rounded-lg border border-gray-200 px-3 py-2 text-sm">
+        <p class="font-medium text-gray-900">${esc(a.naam)}</p>
+        <p class="text-red-600 text-sm">−${euro(g)}</p>
+        <p class="text-gray-400 text-xs">resterend ${euro(a.resterendBudget)}</p>
+      </div>`;}).join('');
+    return `
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <button onclick="toggleArchief(${pi})" class="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left">
+          <div>
+            <p class="font-semibold text-gray-900">${esc(periodeLabel(p.periodeType,p.periodeStart))}</p>
+            <p class="text-xs text-gray-500 mt-0.5">${datumNL(p.periodeStart)} – ${datumNL(p.periodeEinde)} · ${p.boekingen.length} boeking${p.boekingen.length!==1?'en':''}</p>
+          </div>
+          <div class="text-right">
+            <p class="font-medium text-red-600">−${euro(totaal)}</p>
+            <p class="text-xs text-gray-400" id="apijl-${pi}">▼ tonen</p>
+          </div>
+        </button>
+        <div id="adet-${pi}" class="hidden border-t border-gray-100">
+          <div class="px-5 py-4 bg-gray-50"><p class="text-xs font-semibold text-gray-500 uppercase mb-3">Budgetten einde periode</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">${snaps}</div>
+          </div>
+          ${p.boekingen.length?`<div class="overflow-x-auto"><table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase"><tr>
+              <th class="px-4 py-2 text-left">Uitgavendatum</th><th class="px-4 py-2 text-left">Boekingsdatum</th>
+              <th class="px-4 py-2 text-left">Afdeling</th><th class="px-4 py-2 text-left">Omschrijving</th>
+              <th class="px-4 py-2 text-left">Categorie</th><th class="px-4 py-2 text-left">Door</th><th class="px-4 py-2 text-right">Bedrag</th>
+            </tr></thead>
+            <tbody class="divide-y divide-gray-100">${rijen}</tbody>
+          </table></div>`:''}
+        </div>
+      </div>`;
+  }).join('')+'</div>';
+}
+
+function toggleArchief(i) {
+  const el=document.getElementById('adet-'+i), pijl=document.getElementById('apijl-'+i);
+  if(!el) return;
+  const verborgen=el.classList.toggle('hidden');
+  if(pijl) pijl.textContent=verborgen?'▼ tonen':'▲ sluiten';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODALS
+// ═══════════════════════════════════════════════════════════
+function renderModal() {
+  if (!modal) return '';
+  if (modal==='boeking')           return wrapModal(renderBoekingModal(), 'max-w-lg');
+  if (modal==='afdeling-bewerken') return wrapModal(renderAfdelingBewerkenModal(), 'max-w-md');
+  if (modal==='nieuwe-afdeling')   return wrapModal(renderNieuweAfdelingModal(), 'max-w-md');
+  if (modal==='categorie')         return wrapModal(renderCategorieModal(), 'max-w-md');
+  if (modal==='periode-inst')      return wrapModal(renderPeriodeInstModal(), 'max-w-md');
+  if (modal==='nieuwe-periode')    return wrapModal(renderNieuwePeriodeModal(), 'max-w-md');
+  if (modal==='import')            return renderImportModal();
+  return '';
+}
+
+function wrapModal(inhoud, breedte) {
+  return `<div class="modal-bg fixed inset-0 flex items-start justify-center z-50 p-4 overflow-y-auto" onclick="sluitModalBg(event)">
+    <div class="bg-white rounded-2xl shadow-xl w-full ${breedte||'max-w-lg'} my-8" onclick="event.stopPropagation()">${inhoud}</div>
+  </div>`;
+}
+
+function modalHeader(titel) {
+  return `<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+    <h2 class="text-lg font-semibold text-gray-900">${titel}</h2>
+    <button onclick="sluitModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+  </div>`;
+}
+
+// ─── AFDELING BEWERKEN ───────────────────────────────────────────────────────
+function renderAfdelingBewerkenModal() {
+  const a = S.get('budgetten').find(x=>x.id===modalData.id)||{};
+  return modalHeader('Afdeling bewerken') + `
+    <form onsubmit="slaAfdelingOp(event,'${esc(a.id)}')" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Naam afdeling</label>
+        <input name="naam" type="text" required value="${esc(a.naam||'')}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Manager</label>
+        <input name="manager" type="text" required value="${esc(a.manager||'')}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Totaalbudget (€)</label>
+        <input name="totaalBudget" type="number" min="0" step="100" required value="${a.totaalBudget||0}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="verwijderAfdeling('${esc(a.id)}')"
+          class="border border-red-200 text-red-500 hover:bg-red-50 px-4 py-2 rounded-lg text-sm transition-colors">Verwijderen</button>
+        <div class="flex-1"></div>
+        <button type="button" onclick="sluitModal()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Annuleren</button>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Opslaan</button>
+      </div>
+    </form>`;
+}
+
+function slaAfdelingOp(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const budgetten = S.get('budgetten');
+  const idx = budgetten.findIndex(a=>a.id===id);
+  if (idx===-1) return;
+  const oud = budgetten[idx];
+  const nieuwTotaal = parseFloat(f.get('totaalBudget'));
+  const verschil = nieuwTotaal - oud.totaalBudget;
+  budgetten[idx] = { ...oud, naam: f.get('naam'), manager: f.get('manager'),
+    totaalBudget: nieuwTotaal, resterendBudget: Math.max(0, oud.resterendBudget + verschil) };
+  S.set('budgetten', budgetten);
+  sluitModal();
+}
+
+function verwijderAfdeling(id) {
+  if (!confirm('Afdeling verwijderen? Alle boekingen van deze afdeling blijven bewaard.')) return;
+  S.set('budgetten', S.get('budgetten').filter(a=>a.id!==id));
+  nav('overzicht');
+}
+
+// ─── NIEUWE AFDELING ─────────────────────────────────────────────────────────
+function renderNieuweAfdelingModal() {
+  return modalHeader('Nieuwe afdeling') + `
+    <form onsubmit="maakAfdeling(event)" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Naam afdeling</label>
+        <input name="naam" type="text" required placeholder="bijv. Sales"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Manager</label>
+        <input name="manager" type="text" required placeholder="Naam manager"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Totaalbudget (€)</label>
+        <input name="totaalBudget" type="number" min="0" step="100" required placeholder="0"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="sluitModal()" class="flex-1 border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Annuleren</button>
+        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Aanmaken</button>
+      </div>
+    </form>`;
+}
+
+function maakAfdeling(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const budget = parseFloat(f.get('totaalBudget'));
+  const nieuw = { id: uuid(), naam: f.get('naam'), manager: f.get('manager'),
+    totaalBudget: budget, resterendBudget: budget, categorieen: [] };
+  const budgetten = S.get('budgetten');
+  budgetten.push(nieuw);
+  S.set('budgetten', budgetten);
+  sluitModal();
+}
+
+// ─── CATEGORIE TOEVOEGEN / BEWERKEN ──────────────────────────────────────────
+function renderCategorieModal() {
+  const afdelingId = modalData.afdelingId;
+  const catId = modalData.catId;
+  const afdeling = S.get('budgetten').find(a=>a.id===afdelingId)||{categorieen:[]};
+  const cat = catId ? (afdeling.categorieen||[]).find(c=>c.id===catId) : null;
+  const restAfdelingBudget = afdeling.resterendBudget;
+
+  return modalHeader(cat ? 'Categorie bewerken' : 'Categorie toevoegen') + `
+    <form onsubmit="slaCategorie(event,'${esc(afdelingId)}','${esc(catId||'')}')" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Naam categorie</label>
+        <input name="naam" type="text" required value="${cat?esc(cat.naam):''}" placeholder="bijv. Opleidingen, Software, Reiskosten"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Toegewezen budget (€)</label>
+        <input name="budget" type="number" min="0" step="100" required value="${cat?cat.toegewezenBudget:''}" placeholder="0"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <p class="text-xs text-gray-400 mt-1">Totaal afdelingsbudget: ${euro(afdeling.totaalBudget)}</p>
+      </div>
+      <div class="flex gap-2 pt-1">
+        ${cat?`<button type="button" onclick="verwijderCategorie('${esc(afdelingId)}','${esc(catId)}')"
+          class="border border-red-200 text-red-500 hover:bg-red-50 px-4 py-2 rounded-lg text-sm">Verwijderen</button><div class="flex-1"></div>`:'<div class="flex-1"></div>'}
+        <button type="button" onclick="sluitModal()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Annuleren</button>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Opslaan</button>
+      </div>
+    </form>`;
+}
+
+function slaCategorie(e, afdelingId, catId) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const budgetten = S.get('budgetten');
+  const afd = budgetten.find(a=>a.id===afdelingId);
+  if (!afd) return;
+  if (!afd.categorieen) afd.categorieen = [];
+  if (catId) {
+    const idx = afd.categorieen.findIndex(c=>c.id===catId);
+    if (idx>-1) afd.categorieen[idx] = { ...afd.categorieen[idx], naam: f.get('naam'), toegewezenBudget: parseFloat(f.get('budget')) };
+  } else {
+    afd.categorieen.push({ id: uuid(), naam: f.get('naam'), toegewezenBudget: parseFloat(f.get('budget')) });
+  }
+  S.set('budgetten', budgetten);
+  sluitModal();
+}
+
+function verwijderCategorie(afdelingId, catId) {
+  if (!confirm('Categorie verwijderen?')) return;
+  const budgetten = S.get('budgetten');
+  const afd = budgetten.find(a=>a.id===afdelingId);
+  if (afd) afd.categorieen = (afd.categorieen||[]).filter(c=>c.id!==catId);
+  S.set('budgetten', budgetten);
+  if (modal==='categorie') sluitModal(); else render();
+}
+
+// ─── BOEKING MODAL ───────────────────────────────────────────────────────────
+function renderBoekingModal() {
+  const budgetten = S.get('budgetten');
+  const voorgeselecteerd = modalData.afdelingId;
+  const geselecteerdeAfd = budgetten.find(a=>a.id===voorgeselecteerd);
+  const cats = geselecteerdeAfd?.categorieen || [];
+
+  const afdelingOpties = budgetten.map(a=>
+    `<option value="${esc(a.id)}" ${a.id===voorgeselecteerd?'selected':''}>${esc(a.naam)} (resterend: ${euro(a.resterendBudget)})</option>`
+  ).join('');
+
+  const catOpties = cats.map(c=>
+    `<option value="${esc(c.id)}">${esc(c.naam)} (${euro(c.toegewezenBudget)})</option>`
+  ).join('');
+
+  const td = vandaag();
+  return modalHeader('Nieuwe afschrijving') + `
+    <form id="boekingForm" onsubmit="submitBoeking(event)" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Afdeling</label>
+        <select name="afdelingId" required onchange="herlaadCats(this)"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">— Kies een afdeling —</option>${afdelingOpties}
+        </select>
+      </div>
+      <div id="catWrap" class="${cats.length?'':'hidden'}">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Categorie <span class="text-gray-400 font-normal">(optioneel)</span></label>
+        <select name="categorieId" id="catSelect"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">— Geen categorie —</option>${catOpties}
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Bedrag (€)</label>
+        <input name="bedrag" type="number" min="1" step="0.01" required placeholder="0,00"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Omschrijving</label>
+        <input name="omschrijving" type="text" required placeholder="Waarvoor is dit bedrag?"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Geboekt door</label>
+        <input name="geboektDoor" type="text" required placeholder="Jouw naam"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Uitgavendatum <span class="text-xs text-gray-400 font-normal">gespendeerd</span></label>
+          <input name="uitgavenDatum" type="date" value="${td}" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Boekingsdatum <span class="text-xs text-gray-400 font-normal">geregistreerd</span></label>
+          <input name="boekingsDatum" type="date" value="${td}" required
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div id="boekingFout" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors">Bedrag afschrijven</button>
+    </form>`;
+}
+
+function herlaadCats(select) {
+  const afdelingId = select.value;
+  const budgetten = S.get('budgetten');
+  const afd = budgetten.find(a=>a.id===afdelingId);
+  const cats = afd?.categorieen||[];
+  const wrap = document.getElementById('catWrap');
+  const catSel = document.getElementById('catSelect');
+  if (!wrap||!catSel) return;
+  if (cats.length) {
+    catSel.innerHTML = '<option value="">— Geen categorie —</option>' +
+      cats.map(c=>`<option value="${esc(c.id)}">${esc(c.naam)} (${euro(c.toegewezenBudget)})</option>`).join('');
+    wrap.classList.remove('hidden');
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
+function submitBoeking(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const afdelingId = f.get('afdelingId');
+  const bedrag = parseFloat(f.get('bedrag'));
+  const categorieId = f.get('categorieId')||'';
+  const budgetten = S.get('budgetten');
+  const afdeling = budgetten.find(a=>a.id===afdelingId);
+  const foutEl = document.getElementById('boekingFout');
+
+  if (!afdeling) { toonFout(foutEl,'Kies een afdeling.'); return; }
+  if (afdeling.resterendBudget < bedrag) { toonFout(foutEl,`Onvoldoende budget. Resterend: ${euro(afdeling.resterendBudget)}.`); return; }
+
+  // Categorie ophalen
+  const cat = categorieId ? (afdeling.categorieen||[]).find(c=>c.id===categorieId) : null;
+
+  afdeling.resterendBudget -= bedrag;
+  S.set('budgetten', budgetten);
+
+  const boekingen = S.get('boekingen');
+  boekingen.unshift({
+    id: uuid(), afdelingId, afdelingNaam: afdeling.naam,
+    bedrag, omschrijving: f.get('omschrijving'), geboektDoor: f.get('geboektDoor'),
+    uitgavenDatum: f.get('uitgavenDatum'), boekingsDatum: f.get('boekingsDatum'),
+    categorieId: cat?cat.id:'', categorieNaam: cat?cat.naam:'', bron:'handmatig',
+  });
+  S.set('boekingen', boekingen);
+  sluitModal();
+}
+
+function toonFout(el, t) { if(el){el.textContent=t;el.classList.remove('hidden');} }
+
+// ─── PERIODE INSTELLINGEN ─────────────────────────────────────────────────────
+let _periodeType = null;
+function renderPeriodeInstModal() {
+  const inst = S.get('instellingen');
+  const types = ['dag','week','maand','kwartaal','jaar'];
+  const knoppen = types.map(t=>`
+    <button type="button" onclick="selectPT('${t}')" id="pt-${t}"
+      class="py-2 rounded-lg text-sm font-medium border transition-colors ${inst.periodeType===t?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}">
+      ${t.charAt(0).toUpperCase()+t.slice(1)}
+    </button>`).join('');
+  return modalHeader('Periode-instellingen') + `
+    <div class="p-6 space-y-5">
+      <div><label class="block text-sm font-medium text-gray-700 mb-2">Termijn</label>
+        <div class="grid grid-cols-5 gap-2">${knoppen}</div></div>
+      <div><label class="block text-sm font-medium text-gray-700 mb-1">Startdatum huidige periode</label>
+        <input type="date" id="pStartDatum" value="${S.get('instellingen').huidigePeriodeStart}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+      <div class="flex gap-2">
+        <button onclick="sluitModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuleren</button>
+        <button onclick="slaInstOp()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium">Opslaan</button>
+      </div>
+    </div>`;
+}
+function selectPT(t) {
+  _periodeType=t;
+  ['dag','week','maand','kwartaal','jaar'].forEach(pt=>{
+    const b=document.getElementById('pt-'+pt);
+    if(b) b.className=`py-2 rounded-lg text-sm font-medium border transition-colors ${pt===t?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`;
+  });
+}
+function slaInstOp() {
+  const inst=S.get('instellingen');
+  S.set('instellingen',{periodeType:_periodeType||inst.periodeType,huidigePeriodeStart:document.getElementById('pStartDatum').value});
+  _periodeType=null; sluitModal();
+}
+
+// ─── NIEUWE PERIODE ──────────────────────────────────────────────────────────
+function renderNieuwePeriodeModal() {
+  return modalHeader('Nieuwe periode starten') + `
+    <div class="p-6 space-y-4">
+      <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+        <p class="font-medium mb-1">Let op</p>
+        <p>De huidige boekingen worden gearchiveerd en alle budgetten worden teruggezet naar het totaalbedrag.</p>
+      </div>
+      <div><label class="block text-sm font-medium text-gray-700 mb-1">Startdatum nieuwe periode</label>
+        <input type="date" id="npStart" value="${vandaag()}"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+      <div class="flex gap-2">
+        <button onclick="sluitModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuleren</button>
+        <button onclick="startNieuwePeriode()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">Starten &amp; budgetten resetten</button>
+      </div>
+    </div>`;
+}
+function startNieuwePeriode() {
+  const nieuwStart=document.getElementById('npStart').value;
+  const inst=S.get('instellingen'); const budgetten=S.get('budgetten');
+  const archief=S.get('archief');
+  archief.unshift({id:uuid(),periodeType:inst.periodeType,periodeStart:inst.huidigePeriodeStart,
+    periodeEinde:vandaag(),boekingen:S.get('boekingen'),budgetSnapshot:budgetten.map(a=>({...a}))});
+  S.set('archief',archief);
+  S.set('boekingen',[]);
+  S.set('budgetten',budgetten.map(a=>({...a,resterendBudget:a.totaalBudget})));
+  S.set('instellingen',{...inst,huidigePeriodeStart:nieuwStart});
+  sluitModal();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  IMPORT MODAL
+// ═══════════════════════════════════════════════════════════
+let impStap='upload', impRegels=[], impSel=new Set(), impFormaatHint='';
+
+function renderImportModal() {
+  const td=vandaag();
+  const wrap=(inhoud,breed)=>`
+    <div class="modal-bg fixed inset-0 flex items-start justify-center z-50 p-4 overflow-y-auto" onclick="sluitModalBg(event)">
+      <div class="bg-white rounded-2xl shadow-xl w-full ${breed||'max-w-5xl'} my-8" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 class="text-lg font-semibold text-gray-900">Bestand importeren</h2>
+          <button onclick="sluitModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-5">${inhoud}</div>
+      </div>
+    </div>`;
+
+  if (impStap==='upload') return wrap(`
+    <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 space-y-2">
+      <p class="font-medium">Verwacht formaat — veldlabels in kolom A, elke kolom B, C, D… = één opleiding</p>
+      <p class="text-xs text-blue-600">Bestanden met labels in de eerste rij worden automatisch omgezet naar kolommen.</p>
+      <div class="grid grid-cols-2 gap-x-6 text-blue-700 text-xs">
+        ${[['Rij 1','Team / afdeling'],['Rij 2','Manager'],['Rij 3','Naam deelnemer + opleiding'],
+           ['Rij 4','Vakkennis / gedragscompetenties / coaching'],['Rij 5','Noodzakelijk / essentieel / preventief / algemene ontwikkeling'],
+           ['Rij 6','Individu / team'],['Rij 7','Aantal personen'],['Rij 8','Kosten (€)']
+          ].map(([r,o])=>`<div class="flex gap-2"><span class="font-mono font-medium w-10 shrink-0">${r}</span><span>${o}</span></div>`).join('')}
+      </div>
+    </div>
+    <div ondragover="event.preventDefault()" ondrop="dropImp(event)"
+      onclick="document.getElementById('impFile').click()"
+      class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+      <p class="text-4xl mb-3">📂</p>
+      <p class="font-medium text-gray-700">Sleep een bestand hierheen of klik om te bladeren</p>
+      <p class="text-sm text-gray-400 mt-1">.xlsx, .xls</p>
+    </div>
+    <input type="file" id="impFile" accept=".xlsx,.xls" class="hidden" onchange="leesImp(event)">
+    <div class="flex justify-end">
+      <button onclick="downloadSjabloon()" class="text-sm text-green-700 border border-green-300 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg font-medium">⬇ Download sjabloon voor collega's</button>
+    </div>
+    <div id="impFout" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+  `);
+
+  if (impStap==='preview') {
+    const selRegels=impRegels.filter((_,i)=>impSel.has(i));
+    const totaal=selRegels.reduce((s,r)=>s+r.bedrag,0);
+    const rijen=impRegels.map((r,i)=>`
+      <tr class="${impSel.has(i)?'':'opacity-40'}">
+        <td class="px-3 py-2"><input type="checkbox" ${impSel.has(i)?'checked':''} onchange="toggleIR(${i})" class="rounded"></td>
+        <td class="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">${esc(r.afdelingNaam)}</td>
+        <td class="px-3 py-2 text-gray-500 whitespace-nowrap">${esc(r.manager)}</td>
+        <td class="px-3 py-2">${esc(r.deelnemerNaam)}</td>
+        <td class="px-3 py-2">${esc(r.opleiding)}</td>
+        <td class="px-3 py-2">${badge(r.categorie)}</td>
+        <td class="px-3 py-2">${badge(r.prioriteit)}</td>
+        <td class="px-3 py-2">${badge(r.niveau)}</td>
+        <td class="px-3 py-2 text-center">${r.aantalPersonen}</td>
+        <td class="px-3 py-2 text-right font-medium text-red-600 whitespace-nowrap">€${Number(r.bedrag).toLocaleString('nl-NL')}</td>
+      </tr>`).join('');
+    return wrap(`
+      ${impFormaatHint?`<p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${esc(impFormaatHint)}</p>`:''}
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Uitgavendatum <span class="text-xs text-gray-400 font-normal">gespendeerd</span></label>
+          <input type="date" id="impUit" value="${td}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Boekingsdatum <span class="text-xs text-gray-400 font-normal">geregistreerd</span></label>
+          <input type="date" id="impBoek" value="${td}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></div>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-gray-200">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-500 text-xs uppercase"><tr>
+            <th class="px-3 py-3"><input type="checkbox" id="impAlles" onchange="toggleIRAlles()" ${impSel.size===impRegels.length?'checked':''} class="rounded"></th>
+            <th class="px-3 py-3 text-left">Afdeling</th><th class="px-3 py-3 text-left">Manager</th>
+            <th class="px-3 py-3 text-left">Deelnemer</th><th class="px-3 py-3 text-left">Opleiding</th>
+            <th class="px-3 py-3 text-left">Categorie</th><th class="px-3 py-3 text-left">Prioriteit</th>
+            <th class="px-3 py-3 text-left">Niveau</th><th class="px-3 py-3 text-center">Pers.</th><th class="px-3 py-3 text-right">Kosten</th>
+          </tr></thead>
+          <tbody class="divide-y divide-gray-100">${rijen}</tbody>
+          <tfoot class="bg-gray-50 border-t border-gray-200"><tr>
+            <td colspan="8" class="px-3 py-2 text-sm text-gray-500">${impSel.size} van ${impRegels.length} geselecteerd</td>
+            <td colspan="2" class="px-3 py-2 text-right text-sm font-semibold">Totaal: €${totaal.toLocaleString('nl-NL')}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="impStap='upload';render()" class="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">← Ander bestand</button>
+        <button onclick="voerImpUit()" ${impSel.size===0?'disabled':''} class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm">
+          ${impSel.size} regel${impSel.size!==1?'s':''} importeren (€${totaal.toLocaleString('nl-NL')})
+        </button>
+      </div>`);
+  }
+
+  if (impStap==='klaar') {
+    const res=window._impRes||{ingevoerd:0,overgeslagen:0,fouten:[]};
+    return wrap(`
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p class="text-3xl font-bold text-green-700">${res.ingevoerd}</p><p class="text-sm text-green-600 mt-1">Succesvol ingevoerd</p></div>
+        <div class="border rounded-xl p-4 text-center ${res.overgeslagen>0?'bg-red-50 border-red-200':'bg-gray-50 border-gray-200'}">
+          <p class="text-3xl font-bold ${res.overgeslagen>0?'text-red-700':'text-gray-400'}">${res.overgeslagen}</p>
+          <p class="text-sm mt-1 ${res.overgeslagen>0?'text-red-600':'text-gray-400'}">Overgeslagen</p>
+        </div>
+      </div>
+      ${res.fouten.length?`<div class="bg-red-50 border border-red-200 rounded-lg px-4 py-3">${res.fouten.map(f=>`<p class="text-xs text-red-700">${esc(f)}</p>`).join('')}</div>`:''}
+      <button onclick="sluitModal()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-sm">Sluiten</button>
+    `,'max-w-md');
+  }
+  return '';
+}
+
+function dropImp(e) { e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) verwerkImp(f); }
+function leesImp(e) { const f=e.target.files[0]; if(f) verwerkImp(f); }
+
+const IMP_VELD_SLEUTELS=[['team','afdeling'],['manager'],['naam','deelnemer','opleiding'],['categorie','vakkennis'],['prioriteit'],['niveau'],['personen','aantal'],['kosten','kost','bedrag']];
+function impNorm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/\p{M}/gu,'').trim();}
+function impMatch(cel,sleutels){const t=impNorm(cel);return sleutels.some(s=>t.includes(s));}
+function impTelMatches(cellen){return IMP_VELD_SLEUTELS.reduce((n,s,i)=>n+(impMatch(cellen[i],s)?1:0),0);}
+function impIsKolom(m){return m.length>=8&&impTelMatches(m.slice(0,8).map(r=>r[0]))>=4;}
+function impIsRij(m){return m.length>=2&&(m[0]?.length||0)>=8&&impTelMatches(m[0])>=4;}
+function impTranspose(m){const rijen=m.length,kols=Math.max(0,...m.map(r=>r.length));return Array.from({length:kols},(_,k)=>Array.from({length:rijen},(_,r)=>String(m[r]?.[k]??'')));}
+function impParseKolom(m){
+  const regels=[];const kols=Math.max(0,...m.map(r=>r.length));
+  for(let col=1;col<kols;col++){
+    const afd=String(m[0]?.[col]||'').trim();
+    const kosten=parseFloat(String(m[7]?.[col]||'0').replace(/[^\d.,]/g,'').replace(',','.'));
+    if(!afd&&isNaN(kosten)) continue;
+    const naamOpl=String(m[2]?.[col]||'').trim();
+    const [naam,...rest]=naamOpl.split(/[\n\r|–\-]+/);
+    regels.push({afdelingNaam:afd,manager:String(m[1]?.[col]||'').trim(),deelnemerNaam:naam.trim(),
+      opleiding:rest.join(' ').trim()||naamOpl,categorie:String(m[3]?.[col]||'').trim(),
+      prioriteit:String(m[4]?.[col]||'').trim(),niveau:String(m[5]?.[col]||'').trim(),
+      aantalPersonen:parseInt(String(m[6]?.[col]||'1'))||1,bedrag:isNaN(kosten)?0:kosten});
+  }
+  return regels;
+}
+function parseImpMatrix(matrix){
+  const m=matrix.map(r=>r.map(c=>String(c??'')));
+  if(impIsKolom(m)) return {regels:impParseKolom(m),formaat:'kolommen'};
+  if(impIsRij(m)) return {regels:impParseKolom(impTranspose(m)),formaat:'rijen'};
+  const direct=impParseKolom(m);
+  if(direct.length) return {regels:direct,formaat:'kolommen'};
+  return {regels:impParseKolom(impTranspose(m)),formaat:'rijen'};
+}
+
+function verwerkImp(file) {
+  const fEl=document.getElementById('impFout');
+  impFormaatHint='';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const matrix=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      if(matrix.length<2){if(fEl){fEl.textContent='Te weinig gegevens in bestand.';fEl.classList.remove('hidden');}return;}
+      const {regels:gevonden,formaat}=parseImpMatrix(matrix);
+      if(!gevonden.length){if(fEl){fEl.textContent='Geen geldige opleidingen. Gebruik kolomformaat: labels in kolom A, elke opleiding in kolom B, C, …';fEl.classList.remove('hidden');}return;}
+      if(formaat==='rijen') impFormaatHint='Dit bestand stond in rijformaat en is automatisch omgezet naar kolommen.';
+      impRegels=gevonden; impSel=new Set(gevonden.map((_,i)=>i)); impStap='preview'; render();
+    } catch{if(fEl){fEl.textContent='Bestand kon niet worden ingelezen.';fEl.classList.remove('hidden');}}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function toggleIR(i) { impSel.has(i)?impSel.delete(i):impSel.add(i); render(); }
+function toggleIRAlles() { impSel.size===impRegels.length?impSel=new Set():impSel=new Set(impRegels.map((_,i)=>i)); render(); }
+
+function voerImpUit() {
+  const uitDatum=document.getElementById('impUit')?.value||vandaag();
+  const boekDatum=document.getElementById('impBoek')?.value||vandaag();
+  const sel=impRegels.filter((_,i)=>impSel.has(i));
+  const budgetten=S.get('budgetten'); const boekingen=S.get('boekingen');
+  const fouten=[]; const nieuw=[];
+  for(const r of sel){
+    const bedrag=Number(r.bedrag);
+    if(!r.afdelingNaam||isNaN(bedrag)||bedrag<=0){fouten.push(`Overgeslagen: "${r.opleiding||'?'}" — ongeldig.`);continue;}
+    const afd=budgetten.find(a=>a.naam.toLowerCase()===r.afdelingNaam.toLowerCase());
+    if(!afd){fouten.push(`Afdeling "${r.afdelingNaam}" niet gevonden.`);continue;}
+    if(afd.resterendBudget<bedrag){fouten.push(`Onvoldoende budget voor "${afd.naam}" — "${r.opleiding}" overgeslagen.`);continue;}
+    afd.resterendBudget-=bedrag;
+    nieuw.push({id:uuid(),boekingsDatum:boekDatum,uitgavenDatum:uitDatum,afdelingId:afd.id,afdelingNaam:afd.naam,bedrag,
+      omschrijving:[r.deelnemerNaam,r.opleiding].filter(Boolean).join(' – '),geboektDoor:r.manager||'Import',
+      deelnemerNaam:r.deelnemerNaam,opleiding:r.opleiding,categorie:r.categorie,prioriteit:r.prioriteit,
+      niveau:r.niveau,aantalPersonen:r.aantalPersonen,bron:'import',categorieId:'',categorieNaam:''});
+  }
+  S.set('budgetten',budgetten); boekingen.unshift(...nieuw); S.set('boekingen',boekingen);
+  window._impRes={ingevoerd:nieuw.length,overgeslagen:fouten.length,fouten};
+  impStap='klaar'; render();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EXPORT & SJABLOON
+// ═══════════════════════════════════════════════════════════
+function exportExcel() {
+  const afd=S.get('budgetten'); const boek=S.get('boekingen');
+  const inst=S.get('instellingen');
+  const periode=periodeLabel(inst.periodeType,inst.huidigePeriodeStart);
+  const wb=XLSX.utils.book_new();
+  const ws1=XLSX.utils.json_to_sheet(afd.map(a=>({'Afdeling':a.naam,'Manager':a.manager,
+    'Totaal (€)':a.totaalBudget,'Gebruikt (€)':a.totaalBudget-a.resterendBudget,'Resterend (€)':a.resterendBudget,
+    'Gebruikt (%)':Math.round((a.totaalBudget-a.resterendBudget)/a.totaalBudget*100)})));
+  ws1['!cols']=[{wch:16},{wch:18},{wch:14},{wch:14},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Budgetten');
+  const ws2=XLSX.utils.json_to_sheet(boek.map(b=>({'Uitgavendatum':datumNL(b.uitgavenDatum||b.datum),
+    'Boekingsdatum':datumNL(b.boekingsDatum||b.datum),'Afdeling':b.afdelingNaam,'Categorie':b.categorieNaam||'',
+    'Omschrijving':b.omschrijving,'Bedrag (€)':b.bedrag,'Geboekt door':b.geboektDoor,
+    'Opl.categorie':b.categorie||'','Prioriteit':b.prioriteit||'','Niveau':b.niveau||''})));
+  ws2['!cols']=[{wch:14},{wch:14},{wch:16},{wch:18},{wch:30},{wch:12},{wch:18},{wch:18},{wch:20},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Boekingen');
+  XLSX.writeFile(wb,`Budgetoverzicht_${periode}.xlsx`);
+}
+
+function downloadSjabloon() {
+  const labels=['Team / Afdeling','Manager','Naam deelnemer + opleiding',
+    'Categorie (vakkennis / gedragscompetenties / coaching)',
+    'Prioriteit (noodzakelijk / essentieel / preventief / algemene ontwikkeling)',
+    'Niveau (individu / team)','Aantal personen','Kosten (€)'];
+  const v1=['ICT','Jan de Vries','Piet Janssen – Excel training','vakkennis','essentieel','individu',1,450];
+  const v2=['Marketing','Tom Bakker','Sara Klaas – Leiderschapstraining','gedragscompetenties','noodzakelijk','team',5,3000];
+  const data=labels.map((l,i)=>[l,v1[i],v2[i]]);
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:52},{wch:32},{wch:32}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Opleidingsaanvraag');
+  XLSX.writeFile(wb,'Opleidingsaanvraag_sjabloon.xlsx');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════════════
+initData();
+render();
+</script>
+</body>
+</html>
