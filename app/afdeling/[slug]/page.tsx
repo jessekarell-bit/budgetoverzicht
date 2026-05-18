@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Afdeling, Boeking } from "@/lib/types";
 import BudgetBalk from "@/components/BudgetBalk";
 import BoekingForm from "@/components/BoekingForm";
+import AfdelingFormModal from "@/components/AfdelingFormModal";
 
 export default function AfdelingPagina() {
   const { slug } = useParams<{ slug: string }>();
@@ -13,6 +14,7 @@ export default function AfdelingPagina() {
   const [boekingen, setBoekingen] = useState<Boeking[]>([]);
   const [afdelingen, setAfdelingen] = useState<Afdeling[]>([]);
   const [toonFormulier, setToonFormulier] = useState(false);
+  const [toonBewerken, setToonBewerken] = useState(false);
 
   const laadData = useCallback(async () => {
     const [budRes, boekRes] = await Promise.all([
@@ -34,10 +36,25 @@ export default function AfdelingPagina() {
 
   return (
     <main className="min-h-screen bg-gray-50">
+      {toonBewerken && (
+        <AfdelingFormModal
+          mode="edit"
+          afdeling={afdeling}
+          onSuccess={() => { setToonBewerken(false); laadData(); }}
+          onSluiten={() => setToonBewerken(false)}
+        />
+      )}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
         <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Overzicht</Link>
         <h1 className="text-xl font-bold text-gray-900">{afdeling.naam}</h1>
-        <span className="text-sm text-gray-500 ml-auto">{afdeling.manager}</span>
+        <span className="text-sm text-gray-500">{afdeling.manager}</span>
+        <button
+          type="button"
+          onClick={() => setToonBewerken(true)}
+          className="ml-auto border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+        >
+          Bewerken
+        </button>
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
