@@ -1,45 +1,45 @@
 import "server-only";
-import fs from "fs";
-import path from "path";
 import { Afdeling, Boeking, Instellingen, ArchiefPeriode } from "@/lib/types";
+import { readJsonFile, writeJsonFile } from "@/lib/storage";
 
 export type { Afdeling, Boeking, Instellingen, ArchiefPeriode };
 export type { PeriodeType } from "@/lib/types";
 
-const dataDir = path.join(process.cwd(), "data");
+const FILES = {
+  budgetten: "budgetten.json",
+  boekingen: "boekingen.json",
+  instellingen: "instellingen.json",
+  archief: "archief.json",
+} as const;
 
-export function getBudgetten(): Afdeling[] {
-  const raw = fs.readFileSync(path.join(dataDir, "budgetten.json"), "utf-8");
-  return JSON.parse(raw);
+export async function getBudgetten(): Promise<Afdeling[]> {
+  return readJsonFile<Afdeling[]>(FILES.budgetten);
 }
 
-export function getBoekingen(): Boeking[] {
-  const raw = fs.readFileSync(path.join(dataDir, "boekingen.json"), "utf-8");
-  return JSON.parse(raw);
+export async function getBoekingen(): Promise<Boeking[]> {
+  return readJsonFile<Boeking[]>(FILES.boekingen);
 }
 
-export function getInstellingen(): Instellingen {
-  const raw = fs.readFileSync(path.join(dataDir, "instellingen.json"), "utf-8");
-  return JSON.parse(raw);
+export async function getInstellingen(): Promise<Instellingen> {
+  return readJsonFile<Instellingen>(FILES.instellingen);
 }
 
-export function getArchief(): ArchiefPeriode[] {
-  const raw = fs.readFileSync(path.join(dataDir, "archief.json"), "utf-8");
-  return JSON.parse(raw);
+export async function getArchief(): Promise<ArchiefPeriode[]> {
+  return readJsonFile<ArchiefPeriode[]>(FILES.archief);
 }
 
-export function saveBudgetten(data: Afdeling[]) {
-  fs.writeFileSync(path.join(dataDir, "budgetten.json"), JSON.stringify(data, null, 2));
+export async function saveBudgetten(data: Afdeling[]): Promise<void> {
+  await writeJsonFile(FILES.budgetten, data);
 }
 
-export function saveBoekingen(data: Boeking[]) {
-  fs.writeFileSync(path.join(dataDir, "boekingen.json"), JSON.stringify(data, null, 2));
+export async function saveBoekingen(data: Boeking[]): Promise<void> {
+  await writeJsonFile(FILES.boekingen, data);
 }
 
-export function saveInstellingen(data: Instellingen) {
-  fs.writeFileSync(path.join(dataDir, "instellingen.json"), JSON.stringify(data, null, 2));
+export async function saveInstellingen(data: Instellingen): Promise<void> {
+  await writeJsonFile(FILES.instellingen, data);
 }
 
-export function saveArchief(data: ArchiefPeriode[]) {
-  fs.writeFileSync(path.join(dataDir, "archief.json"), JSON.stringify(data, null, 2));
+export async function saveArchief(data: ArchiefPeriode[]): Promise<void> {
+  await writeJsonFile(FILES.archief, data);
 }

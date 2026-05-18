@@ -5,47 +5,49 @@ import {
   saveBudgetten, saveBoekingen, saveInstellingen, saveArchief,
 } from "@/lib/data";
 
-// POST: start een nieuwe periode (archiveer huidig + reset budgetten)
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { nieuwePeriodeStart } = body;
+  try {
+    const body = await req.json();
+    const { nieuwePeriodeStart } = body;
 
-  if (!nieuwePeriodeStart) {
-    return NextResponse.json({ error: "Nieuwe startdatum is verplicht." }, { status: 400 });
+    if (!nieuwePeriodeStart) {
+      return NextResponse.json({ error: "Nieuwe startdatum is verplicht." }, { status: 400 });
+    }
+
+    const instellingen = await getInstellingen();
+    const budgetten = await getBudgetten();
+    const boekingen = await getBoekingen();
+    const archief = await getArchief();
+
+    const archiefItem = {
+      id: randomUUID(),
+      periodeType: instellingen.periodeType,
+      periodeStart: instellingen.huidigePeriodeStart,
+      periodeEinde: new Date(Date.now() - 86400000).toISOString().split("T")[0],
+      boekingen,
+      budgetSnapshot: budgetten.map((a) => ({ ...a })),
+    };
+
+    archief.unshift(archiefItem);
+    await saveArchief(archief);
+
+    const gereset = budgetten.map((a) => ({ ...a, resterendBudget: a.totaalBudget }));
+    await saveBudgetten(gereset);
+    await saveBoekingen([]);
+    await saveInstellingen({ ...instellingen, huidigePeriodeStart: nieuwePeriodeStart });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/periode:", e);
+    return NextResponse.json({ error: "Kon periode niet starten." }, { status: 500 });
   }
-
-  const instellingen = getInstellingen();
-  const budgetten = getBudgetten();
-  const boekingen = getBoekingen();
-  const archief = getArchief();
-
-  // Archiveer de huidige periode
-  const archiefItem = {
-    id: randomUUID(),
-    periodeType: instellingen.periodeType,
-    periodeStart: instellingen.huidigePeriodeStart,
-    periodeEinde: new Date(Date.now() - 86400000).toISOString().split("T")[0], // gisteren
-    boekingen,
-    budgetSnapshot: budgetten.map((a) => ({ ...a })),
-  };
-
-  archief.unshift(archiefItem);
-  saveArchief(archief);
-
-  // Reset budgetten
-  const gereset = budgetten.map((a) => ({ ...a, resterendBudget: a.totaalBudget }));
-  saveBudgetten(gereset);
-
-  // Lege boekingen
-  saveBoekingen([]);
-
-  // Sla nieuwe periode op
-  saveInstellingen({ ...instellingen, huidigePeriodeStart: nieuwePeriodeStart });
-
-  return NextResponse.json({ ok: true });
 }
 
-// GET: haal archief op
 export async function GET() {
-  return NextResponse.json(getArchief());
+  try {
+    return NextResponse.json(await getArchief());
+  } catch (e) {
+    console.error("GET /api/periode:", e);
+    return NextResponse.json({ error: "Kon archief niet laden." }, { status: 500 });
+  }
 }

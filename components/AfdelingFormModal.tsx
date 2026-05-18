@@ -40,8 +40,19 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
       body: JSON.stringify({ naam, manager, totaalBudget: budget }),
     });
 
-    const data = await res.json();
     setBezig(false);
+
+    let data: { error?: string } & Partial<Afdeling> = {};
+    try {
+      data = await res.json();
+    } catch {
+      setFout(
+        res.status >= 500
+          ? "Serverfout bij opslaan. Vernieuw de pagina en probeer het opnieuw."
+          : "Opslaan mislukt."
+      );
+      return;
+    }
 
     if (!res.ok) {
       setFout(data.error ?? "Opslaan mislukt.");
