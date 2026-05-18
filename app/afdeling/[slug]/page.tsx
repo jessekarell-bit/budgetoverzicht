@@ -7,6 +7,7 @@ import { Afdeling, Boeking } from "@/lib/types";
 import BudgetBalk from "@/components/BudgetBalk";
 import BoekingForm from "@/components/BoekingForm";
 import AfdelingFormModal from "@/components/AfdelingFormModal";
+import { getBudgetten, getBoekingen } from "@/lib/budgetStore";
 
 export default function AfdelingPagina() {
   const { slug } = useParams<{ slug: string }>();
@@ -16,13 +17,9 @@ export default function AfdelingPagina() {
   const [toonFormulier, setToonFormulier] = useState(false);
   const [toonBewerken, setToonBewerken] = useState(false);
 
-  const laadData = useCallback(async () => {
-    const [budRes, boekRes] = await Promise.all([
-      fetch("/api/budgetten"),
-      fetch("/api/boeken"),
-    ]);
-    const alle: Afdeling[] = await budRes.json();
-    const alleBoekingen: Boeking[] = await boekRes.json();
+  const laadData = useCallback(() => {
+    const alle = getBudgetten();
+    const alleBoekingen = getBoekingen();
     setAfdelingen(alle);
     setAfdeling(alle.find((a) => a.id === slug) ?? null);
     setBoekingen(alleBoekingen.filter((b) => b.afdelingId === slug));

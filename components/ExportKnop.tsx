@@ -2,20 +2,16 @@
 
 import { useState } from "react";
 import * as XLSX from "xlsx";
-import { Afdeling, Boeking } from "@/lib/types";
+import { getBudgetten, getBoekingen } from "@/lib/budgetStore";
 
 export default function ExportKnop() {
   const [bezig, setBezig] = useState(false);
 
-  async function handleExport() {
+  function handleExport() {
     setBezig(true);
 
-    const [budRes, boekRes] = await Promise.all([
-      fetch("/api/budgetten"),
-      fetch("/api/boeken"),
-    ]);
-    const afdelingen: Afdeling[] = await budRes.json();
-    const boekingen: Boeking[] = await boekRes.json();
+    const afdelingen = getBudgetten();
+    const boekingen = getBoekingen();
 
     // Tabblad 1: Budgetten
     const budgetRijen = afdelingen.map((a) => ({

@@ -1,0 +1,16 @@
+import { Afdeling, Instellingen } from "@/lib/types";
+
+export const DEFAULT_BUDGETTEN: Afdeling[] = [
+  { id: "ict", naam: "ICT", manager: "Jan de Vries", totaalBudget: 50000, resterendBudget: 50000 },
+  { id: "hr", naam: "HR", manager: "Lisa Smit", totaalBudget: 30000, resterendBudget: 30000 },
+  { id: "marketing", naam: "Marketing", manager: "Tom Bakker", totaalBudget: 40000, resterendBudget: 40000 },
+  { id: "financien", naam: "Financiën", manager: "Sara Jansen", totaalBudget: 25000, resterendBudget: 25000 },
+  { id: "operations", naam: "Operations", manager: "Piet Willems", totaalBudget: 60000, resterendBudget: 60000 },
+];
+
+export function defaultInstellingen(): Instellingen {
+  return {
+    periodeType: "maand",
+    huidigePeriodeStart: new Date().toISOString().split("T")[0],
+  };
+}

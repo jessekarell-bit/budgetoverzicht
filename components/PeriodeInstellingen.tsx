@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Instellingen, PeriodeType } from "@/lib/types";
+import { saveInstellingen } from "@/lib/budgetStore";
 
 const PERIODE_OPTIES: { value: PeriodeType; label: string }[] = [
   { value: "dag", label: "Per dag" },
@@ -23,17 +24,17 @@ export default function PeriodeInstellingen({ instellingen, onOpgeslagen, onSlui
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
 
-  async function opslaan() {
+  function opslaan() {
     setBezig(true);
     setFout("");
-    const res = await fetch("/api/instellingen", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ periodeType, huidigePeriodeStart: startDatum }),
-    });
-    setBezig(false);
-    if (!res.ok) { setFout("Opslaan mislukt."); return; }
-    onOpgeslagen();
+    try {
+      saveInstellingen({ periodeType, huidigePeriodeStart: startDatum });
+      onOpgeslagen();
+    } catch {
+      setFout("Opslaan mislukt.");
+    } finally {
+      setBezig(false);
+    }
   }
 
   return (

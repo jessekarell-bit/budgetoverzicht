@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PeriodeType } from "@/lib/types";
+import { startNieuwePeriode } from "@/lib/budgetStore";
 
 interface Props {
   periodeType: PeriodeType;
@@ -14,17 +15,17 @@ export default function NieuwePeriodeModal({ periodeType, onBevestigd, onSluiten
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
 
-  async function starten() {
+  function starten() {
     setBezig(true);
     setFout("");
-    const res = await fetch("/api/periode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nieuwePeriodeStart: nieuweDatum }),
-    });
-    setBezig(false);
-    if (!res.ok) { setFout("Er ging iets mis."); return; }
-    onBevestigd();
+    try {
+      startNieuwePeriode(nieuweDatum);
+      onBevestigd();
+    } catch {
+      setFout("Er ging iets mis.");
+    } finally {
+      setBezig(false);
+    }
   }
 
   return (

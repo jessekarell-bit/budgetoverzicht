@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import { ImportRegel, parseOpleidingsMatrix } from "@/lib/importExcel";
+import { importeerRegels } from "@/lib/budgetStore";
 
 function downloadSjabloon() {
   // Rijen zijn de categorieën, kolommen zijn de opleidingen
@@ -161,15 +162,10 @@ export default function ImportModal({ onSuccess, onSluiten }: Props) {
     }
   }
 
-  async function importeren() {
+  function importeren() {
     setStap("bezig");
     const geselecteerdeRegels = regels.filter((_, i) => geselecteerd.has(i));
-    const res = await fetch("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ regels: geselecteerdeRegels, uitgavenDatum, boekingsDatum }),
-    });
-    const data = await res.json();
+    const data = importeerRegels(geselecteerdeRegels, uitgavenDatum, boekingsDatum);
     setResultaat(data);
     setStap("klaar");
     if (data.ingevoerd > 0) onSuccess();

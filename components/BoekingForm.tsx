@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Afdeling } from "@/lib/types";
+import { maakBoeking } from "@/lib/budgetStore";
 
 interface Props {
   afdelingen: Afdeling[];
@@ -21,38 +22,31 @@ export default function BoekingForm({ afdelingen, defaultAfdelingId, onSuccess }
   const [fout, setFout] = useState("");
   const [bezig, setBezig] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFout("");
     setBezig(true);
 
-    const res = await fetch("/api/boeken", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      maakBoeking({
         afdelingId,
         bedrag: Number(bedrag),
         omschrijving,
         geboektDoor,
         boekingsDatum,
         uitgavenDatum,
-      }),
-    });
-
-    const data = await res.json();
-    setBezig(false);
-
-    if (!res.ok) {
-      setFout(data.error ?? "Er ging iets mis.");
-      return;
+      });
+      setBedrag("");
+      setOmschrijving("");
+      setGeboektDoor("");
+      setBoekingsDatum(vandaag);
+      setUitgavenDatum(vandaag);
+      onSuccess();
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : "Er ging iets mis.");
+    } finally {
+      setBezig(false);
     }
-
-    setBedrag("");
-    setOmschrijving("");
-    setGeboektDoor("");
-    setBoekingsDatum(vandaag);
-    setUitgavenDatum(vandaag);
-    onSuccess();
   }
 
   return (

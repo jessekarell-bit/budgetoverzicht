@@ -10,6 +10,7 @@ import PeriodeInstellingen from "@/components/PeriodeInstellingen";
 import NieuwePeriodeModal from "@/components/NieuwePeriodeModal";
 import ImportModal from "@/components/ImportModal";
 import AfdelingFormModal from "@/components/AfdelingFormModal";
+import { getBudgetten, getInstellingen } from "@/lib/budgetStore";
 
 export default function Home() {
   const [afdelingen, setAfdelingen] = useState<Afdeling[]>([]);
@@ -20,13 +21,9 @@ export default function Home() {
   const [toonImport, setToonImport] = useState(false);
   const [afdelingModal, setAfdelingModal] = useState<"create" | Afdeling | null>(null);
 
-  const laadData = useCallback(async () => {
-    const [budRes, instRes] = await Promise.all([
-      fetch("/api/budgetten"),
-      fetch("/api/instellingen"),
-    ]);
-    setAfdelingen(await budRes.json());
-    setInstellingen(await instRes.json());
+  const laadData = useCallback(() => {
+    setAfdelingen(getBudgetten());
+    setInstellingen(getInstellingen());
   }, []);
 
   useEffect(() => { laadData(); }, [laadData]);

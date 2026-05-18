@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArchiefPeriode, periodeLabel } from "@/lib/types";
+import { getArchief } from "@/lib/budgetStore";
 
 export default function ArchiefPagina() {
   const [archief, setArchief] = useState<ArchiefPeriode[]>([]);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/periode").then(r => r.json()).then(setArchief);
+    setArchief(getArchief());
   }, []);
 
   return (

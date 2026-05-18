@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Afdeling } from "@/lib/types";
+import { maakAfdeling, updateAfdeling, verwijderAfdeling } from "@/lib/budgetStore";
 
 interface Props {
   mode: "create" | "edit";
@@ -12,7 +12,6 @@ interface Props {
 }
 
 export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten }: Props) {
-  const router = useRouter();
   const [naam, setNaam] = useState(afdeling?.naam ?? "");
   const [manager, setManager] = useState(afdeling?.manager ?? "");
   const [totaalBudget, setTotaalBudget] = useState(
@@ -21,7 +20,7 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
 
-  async function opslaan(e: React.FormEvent) {
+  function opslaan(e: React.FormEvent) {
     e.preventDefault();
     setBezig(true);
     setFout("");
@@ -33,36 +32,20 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
       return;
     }
 
-    const url = mode === "create" ? "/api/budgetten" : `/api/budgetten/${afdeling!.id}`;
-    const res = await fetch(url, {
-      method: mode === "create" ? "POST" : "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ naam, manager, totaalBudget: budget }),
-    });
-
-    setBezig(false);
-
-    let data: { error?: string } & Partial<Afdeling> = {};
     try {
-      data = await res.json();
-    } catch {
-      setFout(
-        res.status >= 500
-          ? "Serverfout bij opslaan. Vernieuw de pagina en probeer het opnieuw."
-          : "Opslaan mislukt."
-      );
-      return;
+      const result =
+        mode === "create"
+          ? maakAfdeling({ naam, manager, totaalBudget: budget })
+          : updateAfdeling(afdeling!.id, { naam, manager, totaalBudget: budget });
+      onSuccess(result);
+    } catch (err) {
+      setFout(err instanceof Error ? err.message : "Opslaan mislukt.");
+    } finally {
+      setBezig(false);
     }
-
-    if (!res.ok) {
-      setFout(data.error ?? "Opslaan mislukt.");
-      return;
-    }
-
-    onSuccess(data as Afdeling);
   }
 
-  async function verwijderen() {
+  function verwijderen() {
     if (!afdeling) return;
     if (
       !confirm(
@@ -71,19 +54,9 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
     ) {
       return;
     }
-
-    setBezig(true);
-    const res = await fetch(`/api/budgetten/${afdeling.id}`, { method: "DELETE" });
-    setBezig(false);
-
-    if (!res.ok) {
-      setFout("Verwijderen mislukt.");
-      return;
-    }
-
+    verwijderAfdeling(afdeling.id);
     onSluiten();
-    router.push("/");
-    router.refresh();
+    window.location.href = "/";
   }
 
   return (
