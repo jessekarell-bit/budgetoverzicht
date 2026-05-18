@@ -1,11 +1,18 @@
 export type PeriodeType = "dag" | "week" | "maand" | "kwartaal" | "jaar";
 
+/** Prioriteits-/volgorde-indicatie per afdeling (eigen kolom in Excel). */
+export type AfdelingNummer = 1 | 2 | 3 | 4;
+
 export interface Afdeling {
   id: string;
   naam: string;
   manager: string;
   totaalBudget: number;
   resterendBudget: number;
+  /** Hex-kleur, bijv. #3B82F6 — wordt in Excel als celachtergrond gebruikt. */
+  kleur?: string;
+  /** Waarde 1–4 voor de Excel-kolom "Nummer". */
+  nummer?: AfdelingNummer;
 }
 
 export type OpleidingCategorie = "vakkennis" | "gedragscompetenties" | "coaching";

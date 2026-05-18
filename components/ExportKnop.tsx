@@ -1,55 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import * as XLSX from "xlsx";
 import { getBudgetten, getBoekingen } from "@/lib/budgetStore";
+import { exportBudgetNaarExcel } from "@/lib/excelExport";
 
 export default function ExportKnop() {
   const [bezig, setBezig] = useState(false);
 
   function handleExport() {
     setBezig(true);
-
     const afdelingen = getBudgetten();
     const boekingen = getBoekingen();
-
-    // Tabblad 1: Budgetten
-    const budgetRijen = afdelingen.map((a) => ({
-      Afdeling: a.naam,
-      Manager: a.manager,
-      "Totaal budget (€)": a.totaalBudget,
-      "Gebruikt (€)": a.totaalBudget - a.resterendBudget,
-      "Resterend (€)": a.resterendBudget,
-      "Gebruikt (%)": Math.round(((a.totaalBudget - a.resterendBudget) / a.totaalBudget) * 100),
-    }));
-
-    // Tabblad 2: Boekingen
-    const boekingRijen = boekingen.map((b) => ({
-      Uitgavendatum: new Date(b.uitgavenDatum ?? b.datum ?? "").toLocaleDateString("nl-NL"),
-      Boekingsdatum: new Date(b.boekingsDatum ?? b.datum ?? "").toLocaleDateString("nl-NL"),
-      Afdeling: b.afdelingNaam,
-      Omschrijving: b.omschrijving,
-      "Bedrag (€)": b.bedrag,
-      "Geboekt door": b.geboektDoor,
-    }));
-
-    const wb = XLSX.utils.book_new();
-
-    const wsBudget = XLSX.utils.json_to_sheet(budgetRijen);
-    wsBudget["!cols"] = [
-      { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
-    ];
-    XLSX.utils.book_append_sheet(wb, wsBudget, "Budgetten");
-
-    const wsBoekingen = XLSX.utils.json_to_sheet(boekingRijen);
-    wsBoekingen["!cols"] = [
-      { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 30 }, { wch: 12 }, { wch: 18 },
-    ];
-    XLSX.utils.book_append_sheet(wb, wsBoekingen, "Boekingen");
-
     const maand = new Date().toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
-    XLSX.writeFile(wb, `Budgetoverzicht_${maand}.xlsx`);
-
+    exportBudgetNaarExcel(afdelingen, boekingen, `Budgetoverzicht_${maand}.xlsx`);
     setBezig(false);
   }
 

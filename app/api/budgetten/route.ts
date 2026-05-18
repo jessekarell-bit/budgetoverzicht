@@ -15,10 +15,12 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { naam, manager, totaalBudget } = body as {
+    const { naam, manager, totaalBudget, kleur, nummer } = body as {
       naam?: string;
       manager?: string;
       totaalBudget?: number;
+      kleur?: string;
+      nummer?: 1 | 2 | 3 | 4;
     };
 
     const naamTrim = (naam ?? "").trim();
@@ -39,6 +41,8 @@ export async function POST(req: NextRequest) {
       manager: managerTrim,
       totaalBudget: budget,
       resterendBudget: budget,
+      ...(kleur && /^#[0-9A-Fa-f]{6}$/.test(kleur) ? { kleur } : {}),
+      ...(nummer && [1, 2, 3, 4].includes(nummer) ? { nummer } : {}),
     };
 
     budgetten.push(nieuw);

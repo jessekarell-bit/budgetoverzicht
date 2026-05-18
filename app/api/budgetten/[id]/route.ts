@@ -7,10 +7,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
     const body = await req.json();
-    const { naam, manager, totaalBudget } = body as {
+    const { naam, manager, totaalBudget, kleur, nummer } = body as {
       naam?: string;
       manager?: string;
       totaalBudget?: number;
+      kleur?: string;
+      nummer?: 1 | 2 | 3 | 4 | null;
     };
 
     const budgetten = await getBudgetten();
@@ -32,12 +34,19 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     const verschil = nieuwTotaal - oud.totaalBudget;
+    const kleurGeldig = kleur && /^#[0-9A-Fa-f]{6}$/.test(kleur) ? kleur : undefined;
     budgetten[idx] = {
       ...oud,
       naam: nieuweNaam,
       manager: nieuweManager,
       totaalBudget: nieuwTotaal,
       resterendBudget: Math.max(0, oud.resterendBudget + verschil),
+      ...(kleurGeldig ? { kleur: kleurGeldig } : kleur === undefined ? {} : { kleur: oud.kleur }),
+      ...(nummer === null
+        ? { nummer: undefined }
+        : nummer && [1, 2, 3, 4].includes(nummer)
+          ? { nummer }
+          : {}),
     };
     await saveBudgetten(budgetten);
 

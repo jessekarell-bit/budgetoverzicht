@@ -11,6 +11,7 @@ import NieuwePeriodeModal from "@/components/NieuwePeriodeModal";
 import ImportModal from "@/components/ImportModal";
 import AfdelingFormModal from "@/components/AfdelingFormModal";
 import { getBudgetten, getInstellingen } from "@/lib/budgetStore";
+import { kleurVoorAfdeling } from "@/lib/afdelingKleur";
 
 export default function Home() {
   const [afdelingen, setAfdelingen] = useState<Afdeling[]>([]);
@@ -122,31 +123,45 @@ export default function Home() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {afdelingen.map((a) => {
+          {afdelingen.map((a, index) => {
             const gebruikt = a.totaalBudget - a.resterendBudget;
             const pct = a.totaalBudget > 0 ? Math.round((gebruikt / a.totaalBudget) * 100) : 0;
+            const kleur = kleurVoorAfdeling(a.kleur, index);
             return (
               <div
                 key={a.id}
-                className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow relative group"
+                className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow relative group"
               >
+                <div className="h-1.5 w-full" style={{ backgroundColor: kleur }} />
+                <div className="p-5">
                 <button
                   type="button"
                   onClick={() => setAfdelingModal(a)}
                   title="Afdeling bewerken"
-                  className="absolute top-3 right-3 text-gray-400 hover:text-blue-600 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 rounded"
+                  className="absolute top-5 right-3 text-gray-400 hover:text-blue-600 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 rounded"
                 >
                   ✎
                 </button>
                 <Link href={`/afdeling/${a.id}`} className="block">
-                  <div className="flex items-start justify-between mb-3 pr-6">
+                  <div className="flex items-start justify-between mb-3 pr-6 gap-2">
                     <div>
                       <p className="font-semibold text-gray-900">{a.naam}</p>
                       <p className="text-sm text-gray-500">{a.manager}</p>
                     </div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full shrink-0">
-                      {pct}% gebruikt
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {a.nummer != null && (
+                        <span
+                          className="text-xs font-bold text-white w-6 h-6 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: kleur }}
+                          title="Nummer in Excel"
+                        >
+                          {a.nummer}
+                        </span>
+                      )}
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                        {pct}% gebruikt
+                      </span>
+                    </div>
                   </div>
                   <BudgetBalk totaal={a.totaalBudget} resterend={a.resterendBudget} />
                   <div className="flex justify-between mt-3 text-sm">
@@ -156,6 +171,7 @@ export default function Home() {
                     </span>
                   </div>
                 </Link>
+                </div>
               </div>
             );
           })}

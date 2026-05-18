@@ -1,6 +1,7 @@
 "use client";
 
-import { Afdeling, Boeking, Instellingen, ArchiefPeriode, OpleidingCategorie, OpleidingPrioriteit, OpleidingNiveau } from "@/lib/types";
+import { Afdeling, AfdelingNummer, Boeking, Instellingen, ArchiefPeriode, OpleidingCategorie, OpleidingPrioriteit, OpleidingNiveau } from "@/lib/types";
+import { AFDELING_KLEUR_PALET } from "@/lib/afdelingKleur";
 import { DEFAULT_BUDGETTEN, defaultInstellingen } from "@/lib/defaults";
 import { maakAfdelingId } from "@/lib/afdelingId";
 import { ImportRegel } from "@/lib/importExcel";
@@ -105,14 +106,22 @@ export function maakAfdeling(input: {
   naam: string;
   manager: string;
   totaalBudget: number;
+  kleur?: string;
+  nummer?: AfdelingNummer;
 }): Afdeling {
   const budgetten = getBudgetten();
+  const kleur =
+    input.kleur && /^#[0-9A-Fa-f]{6}$/.test(input.kleur)
+      ? input.kleur
+      : AFDELING_KLEUR_PALET[budgetten.length % AFDELING_KLEUR_PALET.length];
   const nieuw: Afdeling = {
     id: maakAfdelingId(input.naam, budgetten),
     naam: input.naam.trim(),
     manager: input.manager.trim(),
     totaalBudget: input.totaalBudget,
     resterendBudget: input.totaalBudget,
+    kleur,
+    ...(input.nummer !== undefined ? { nummer: input.nummer } : {}),
   };
   budgetten.push(nieuw);
   saveBudgetten(budgetten);
@@ -121,7 +130,13 @@ export function maakAfdeling(input: {
 
 export function updateAfdeling(
   id: string,
-  input: { naam: string; manager: string; totaalBudget: number }
+  input: {
+    naam: string;
+    manager: string;
+    totaalBudget: number;
+    kleur?: string;
+    nummer?: AfdelingNummer | null;
+  }
 ): Afdeling {
   const budgetten = getBudgetten();
   const idx = budgetten.findIndex((a) => a.id === id);
@@ -129,12 +144,20 @@ export function updateAfdeling(
 
   const oud = budgetten[idx];
   const verschil = input.totaalBudget - oud.totaalBudget;
+  const kleur =
+    input.kleur && /^#[0-9A-Fa-f]{6}$/.test(input.kleur) ? input.kleur : oud.kleur;
   const bijgewerkt: Afdeling = {
     ...oud,
     naam: input.naam.trim(),
     manager: input.manager.trim(),
     totaalBudget: input.totaalBudget,
     resterendBudget: Math.max(0, oud.resterendBudget + verschil),
+    ...(kleur ? { kleur } : {}),
+    ...(input.nummer === null
+      ? { nummer: undefined }
+      : input.nummer !== undefined
+        ? { nummer: input.nummer }
+        : {}),
   };
   budgetten[idx] = bijgewerkt;
   saveBudgetten(budgetten);

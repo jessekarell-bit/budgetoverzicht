@@ -8,6 +8,7 @@ import BudgetBalk from "@/components/BudgetBalk";
 import BoekingForm from "@/components/BoekingForm";
 import AfdelingFormModal from "@/components/AfdelingFormModal";
 import { getBudgetten, getBoekingen } from "@/lib/budgetStore";
+import { kleurVoorAfdeling } from "@/lib/afdelingKleur";
 
 export default function AfdelingPagina() {
   const { slug } = useParams<{ slug: string }>();
@@ -29,6 +30,8 @@ export default function AfdelingPagina() {
 
   if (!afdeling) return <p className="p-8 text-gray-500">Laden…</p>;
 
+  const afdelingIndex = afdelingen.findIndex((a) => a.id === slug);
+  const kleur = kleurVoorAfdeling(afdeling.kleur, afdelingIndex >= 0 ? afdelingIndex : 0);
   const gebruikt = afdeling.totaalBudget - afdeling.resterendBudget;
 
   return (
@@ -43,7 +46,20 @@ export default function AfdelingPagina() {
       )}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
         <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Overzicht</Link>
+        <span
+          className="w-3 h-3 rounded-full shrink-0"
+          style={{ backgroundColor: kleur }}
+          title="Afdelingskleur"
+        />
         <h1 className="text-xl font-bold text-gray-900">{afdeling.naam}</h1>
+        {afdeling.nummer != null && (
+          <span
+            className="text-xs font-bold text-white w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+            style={{ backgroundColor: kleur }}
+          >
+            {afdeling.nummer}
+          </span>
+        )}
         <span className="text-sm text-gray-500">{afdeling.manager}</span>
         <button
           type="button"

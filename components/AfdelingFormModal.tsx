@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Afdeling } from "@/lib/types";
+import { Afdeling, AfdelingNummer } from "@/lib/types";
+import { AFDELING_KLEUR_PALET } from "@/lib/afdelingKleur";
 import { maakAfdeling, updateAfdeling, verwijderAfdeling } from "@/lib/budgetStore";
 
 interface Props {
@@ -11,12 +12,16 @@ interface Props {
   onSluiten: () => void;
 }
 
+const NUMMERS: AfdelingNummer[] = [1, 2, 3, 4];
+
 export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten }: Props) {
   const [naam, setNaam] = useState(afdeling?.naam ?? "");
   const [manager, setManager] = useState(afdeling?.manager ?? "");
   const [totaalBudget, setTotaalBudget] = useState(
     afdeling ? String(afdeling.totaalBudget) : ""
   );
+  const [kleur, setKleur] = useState(afdeling?.kleur ?? AFDELING_KLEUR_PALET[0]);
+  const [nummer, setNummer] = useState<AfdelingNummer | "">(afdeling?.nummer ?? "");
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
 
@@ -35,8 +40,20 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
     try {
       const result =
         mode === "create"
-          ? maakAfdeling({ naam, manager, totaalBudget: budget })
-          : updateAfdeling(afdeling!.id, { naam, manager, totaalBudget: budget });
+          ? maakAfdeling({
+              naam,
+              manager,
+              totaalBudget: budget,
+              kleur,
+              nummer: nummer === "" ? undefined : nummer,
+            })
+          : updateAfdeling(afdeling!.id, {
+              naam,
+              manager,
+              totaalBudget: budget,
+              kleur,
+              nummer: nummer === "" ? null : nummer,
+            });
       onSuccess(result);
     } catch (err) {
       setFout(err instanceof Error ? err.message : "Opslaan mislukt.");
@@ -61,7 +78,7 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">
             {mode === "create" ? "Nieuwe afdeling" : "Afdeling bewerken"}
@@ -114,6 +131,64 @@ export default function AfdelingFormModal({ mode, afdeling, onSuccess, onSluiten
                 Resterend: €{afdeling.resterendBudget.toLocaleString("nl-NL")}
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Kleur (Excel)</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {AFDELING_KLEUR_PALET.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  title={k}
+                  onClick={() => setKleur(k)}
+                  className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
+                    kleur === k ? "border-gray-900 scale-110" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: k }}
+                />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={kleur}
+                onChange={(e) => setKleur(e.target.value)}
+                className="w-10 h-10 rounded cursor-pointer border border-gray-200"
+              />
+              <span className="text-xs text-gray-500 font-mono">{kleur}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Nummer (1–4, eigen kolom in Excel)
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {NUMMERS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setNummer(nummer === n ? "" : n)}
+                  className={`w-10 h-10 rounded-lg text-sm font-semibold border transition-colors ${
+                    nummer === n
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              {nummer !== "" && (
+                <button
+                  type="button"
+                  onClick={() => setNummer("")}
+                  className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                >
+                  Wis
+                </button>
+              )}
+            </div>
           </div>
 
           {fout && (
