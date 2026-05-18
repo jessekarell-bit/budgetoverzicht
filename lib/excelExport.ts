@@ -30,14 +30,12 @@ function afdelingMap(afdelingen: Afdeling[]): Map<string, Afdeling> {
 export function exportBudgetNaarExcel(afdelingen: Afdeling[], boekingen: Boeking[], bestandsnaam: string) {
   const idNaarAfdeling = afdelingMap(afdelingen);
 
-  const budgetRijen = afdelingen.map((a, i) => {
-    const kleur = kleurVoorAfdeling(a.kleur, i);
+  const budgetRijen = afdelingen.map((a) => {
     const gebruikt = a.totaalBudget - a.resterendBudget;
     return {
       Afdeling: a.naam,
       Manager: a.manager,
       Nummer: a.nummer ?? "",
-      Kleur: kleur,
       "Totaal budget (€)": a.totaalBudget,
       "Gebruikt (€)": gebruikt,
       "Resterend (€)": a.resterendBudget,
@@ -47,14 +45,11 @@ export function exportBudgetNaarExcel(afdelingen: Afdeling[], boekingen: Boeking
 
   const boekingRijen = boekingen.map((b) => {
     const a = idNaarAfdeling.get(b.afdelingId);
-    const idx = afdelingen.findIndex((x) => x.id === b.afdelingId);
-    const kleur = a ? kleurVoorAfdeling(a.kleur, idx >= 0 ? idx : 0) : "#E5E7EB";
     return {
       Uitgavendatum: new Date(b.uitgavenDatum ?? b.datum ?? "").toLocaleDateString("nl-NL"),
       Boekingsdatum: new Date(b.boekingsDatum ?? b.datum ?? "").toLocaleDateString("nl-NL"),
       Afdeling: b.afdelingNaam,
       Nummer: a?.nummer ?? "",
-      Kleur: kleur,
       Omschrijving: b.omschrijving,
       "Bedrag (€)": b.bedrag,
       "Geboekt door": b.geboektDoor,
@@ -68,7 +63,6 @@ export function exportBudgetNaarExcel(afdelingen: Afdeling[], boekingen: Boeking
     { wch: 16 },
     { wch: 18 },
     { wch: 8 },
-    { wch: 10 },
     { wch: 18 },
     { wch: 14 },
     { wch: 14 },
@@ -85,7 +79,6 @@ export function exportBudgetNaarExcel(afdelingen: Afdeling[], boekingen: Boeking
     { wch: 14 },
     { wch: 16 },
     { wch: 8 },
-    { wch: 10 },
     { wch: 30 },
     { wch: 12 },
     { wch: 18 },
